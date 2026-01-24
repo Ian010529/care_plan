@@ -4,6 +4,66 @@ import { generateCarePlan } from "../services/llm";
 
 const router = express.Router();
 
+// GET search orders with filters
+router.get("/search", async (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
+
+    if (!q || typeof q !== "string") {
+      return res
+        .status(400)
+        .json({ error: "Search query parameter 'q' is required" });
+    }
+
+    const searchTerm = `%${q}%`;
+
+    const result = await pool.query(
+      `
+      SELECT 
+        o.id,
+        o.primary_diagnosis,
+        o.medication_name,
+        o.additional_diagnosis,
+        o.medication_history,
+        o.patient_records,
+        o.created_at as order_created_at,
+        p.id as patient_id,
+        p.first_name,
+        p.last_name,
+        p.mrn,
+        pr.id as provider_id,
+        pr.name as provider_name,
+        pr.npi as provider_npi,
+        cp.id as care_plan_id,
+        cp.content as care_plan_content,
+        cp.status as care_plan_status,
+        cp.error_message,
+        cp.created_at as care_plan_created_at,
+        cp.updated_at as care_plan_updated_at
+      FROM orders o
+      JOIN patients p ON o.patient_id = p.id
+      JOIN providers pr ON o.provider_id = pr.id
+      LEFT JOIN care_plans cp ON o.id = cp.order_id
+      WHERE 
+        LOWER(p.first_name) LIKE LOWER($1) OR
+        LOWER(p.last_name) LIKE LOWER($1) OR
+        LOWER(p.mrn) LIKE LOWER($1) OR
+        LOWER(pr.name) LIKE LOWER($1) OR
+        LOWER(pr.npi) LIKE LOWER($1) OR
+        LOWER(o.medication_name) LIKE LOWER($1) OR
+        LOWER(o.primary_diagnosis) LIKE LOWER($1)
+      ORDER BY o.created_at DESC
+    `,
+      [searchTerm],
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error searching orders:", error);
+    res.status(500).json({ error: "Failed to search orders" });
+  }
+});
+
 // GET all orders with patient, provider, and care plan info
 router.get("/", async (req: Request, res: Response) => {
   try {

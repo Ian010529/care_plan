@@ -25,6 +25,8 @@ export default function Home() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -47,9 +49,38 @@ export default function Home() {
       const response = await fetch(`${API_URL}/api/orders`);
       const data = await response.json();
       setOrders(data);
+      setSearchQuery("");
+      setIsSearching(false);
     } catch (error) {
       console.error("Error fetching orders:", error);
     }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+
+    if (!query.trim()) {
+      fetchOrders();
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const response = await fetch(
+        `${API_URL}/api/orders/search?q=${encodeURIComponent(query)}`,
+      );
+      const data = await response.json();
+      setOrders(data);
+    } catch (error) {
+      console.error("Error searching orders:", error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    fetchOrders();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -326,7 +357,52 @@ export default function Home() {
 
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold">Orders</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Orders</h2>
+              <div className="flex items-center space-x-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="Search by patient, MRN, provider, medication..."
+                    className="border border-gray-300 rounded-lg px-4 py-2 pr-10 w-96 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={handleClearSearch}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                  {isSearching && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {searchQuery && (
+              <div className="text-sm text-gray-600">
+                {orders.length > 0
+                  ? `Found ${orders.length} result(s)`
+                  : "No results found"}
+              </div>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
