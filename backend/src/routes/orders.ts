@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import pool from "../db";
-import { generateCarePlan } from "../services/llm";
+import { carePlanQueue } from "../queue";
 
 const router = express.Router();
 
@@ -150,6 +150,44 @@ router.get("/:id", async (req: Request, res: Response) => {
   }
 });
 
+// DELETE order by ID
+router.delete("/:id", async (req: Request, res: Response) => {
+  const client = await pool.connect();
+
+  try {
+    const { id } = req.params;
+
+    await client.query("BEGIN");
+
+    // Check if order exists
+    const orderCheck = await client.query(
+      "SELECT id FROM orders WHERE id = $1",
+      [id],
+    );
+
+    if (orderCheck.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Delete care plan first (due to foreign key constraint)
+    await client.query("DELETE FROM care_plans WHERE order_id = $1", [id]);
+
+    // Delete order
+    await client.query("DELETE FROM orders WHERE id = $1", [id]);
+
+    await client.query("COMMIT");
+
+    res.json({ message: "Order deleted successfully", id: parseInt(id) });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting order:", error);
+    res.status(500).json({ error: "Failed to delete order" });
+  } finally {
+    client.release();
+  }
+});
+
 // POST create new order
 router.post("/", async (req: Request, res: Response) => {
   const client = await pool.connect();
@@ -231,8 +269,25 @@ router.post("/", async (req: Request, res: Response) => {
 
     await client.query("COMMIT");
 
-    // Start generating care plan asynchronously
-    generateCarePlanAsync(orderId, patientRecords, medicationName);
+    // Get the care_plan_id that was just created
+    const carePlanResult = await pool.query(
+      "SELECT id FROM care_plans WHERE order_id = $1",
+      [orderId],
+    );
+    const carePlanId = carePlanResult.rows[0].id;
+
+    // 使用 BullMQ 将任务加入队列
+    await carePlanQueue.add(
+      "generate-care-plan",
+      { carePlanId: carePlanId.toString() },
+      {
+        jobId: `careplan-${carePlanId}`, // 防止重复任务
+      },
+    );
+
+    console.log(
+      `Care plan ${carePlanId} queued for processing (order ${orderId})`,
+    );
 
     // Return the created order
     const finalResult = await pool.query(
@@ -276,46 +331,5 @@ router.post("/", async (req: Request, res: Response) => {
     client.release();
   }
 });
-
-// Async function to generate care plan
-async function generateCarePlanAsync(
-  orderId: number,
-  patientRecords: string,
-  medicationName: string,
-) {
-  try {
-    // Update status to processing
-    await pool.query(
-      "UPDATE care_plans SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE order_id = $2",
-      ["processing", orderId],
-    );
-
-    // Generate care plan using LLM
-    const carePlanContent = await generateCarePlan(
-      patientRecords,
-      medicationName,
-    );
-
-    // Update with completed status
-    await pool.query(
-      "UPDATE care_plans SET content = $1, status = $2, updated_at = CURRENT_TIMESTAMP WHERE order_id = $3",
-      [carePlanContent, "completed", orderId],
-    );
-
-    console.log(`Care plan generated successfully for order ${orderId}`);
-  } catch (error) {
-    console.error(`Error generating care plan for order ${orderId}:`, error);
-
-    // Update with failed status
-    await pool.query(
-      "UPDATE care_plans SET status = $1, error_message = $2, updated_at = CURRENT_TIMESTAMP WHERE order_id = $3",
-      [
-        "failed",
-        error instanceof Error ? error.message : "Unknown error",
-        orderId,
-      ],
-    );
-  }
-}
 
 export default router;

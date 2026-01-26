@@ -158,6 +158,33 @@ export default function Home() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDeleteOrder = async (orderId: number, orderInfo: string) => {
+    if (
+      !confirm(
+        `Are you sure you want to delete order ${orderInfo}? This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/orders/${orderId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        // Remove from local state or refetch
+        fetchOrders();
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete order: ${error.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Error deleting order:", error);
+      alert("Failed to delete order. Please try again.");
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
@@ -467,6 +494,17 @@ export default function Home() {
                           Download
                         </button>
                       )}
+                      <button
+                        onClick={() =>
+                          handleDeleteOrder(
+                            order.id,
+                            `${order.first_name} ${order.last_name} (MRN: ${order.mrn})`,
+                          )
+                        }
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
