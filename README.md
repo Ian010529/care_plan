@@ -1,4 +1,4 @@
-# Care Plan Generator - MVP
+# Care Plan Generator - MVP v0.5
 
 A minimal viable product for automatically generating care plans based on patient information using LLM (GPT-4).
 
@@ -7,6 +7,8 @@ A minimal viable product for automatically generating care plans based on patien
 - **Frontend**: React + Next.js 14 + TypeScript + Tailwind CSS
 - **Backend**: Express.js + TypeScript
 - **Database**: PostgreSQL 16
+- **Queue**: Redis + BullMQ
+- **Real-time**: SSE (Server-Sent Events) + Redis Pub/Sub
 - **LLM**: OpenAI GPT-4
 - **Deployment**: Docker + Docker Compose
 
@@ -66,10 +68,12 @@ Run in the project root directory:
 docker-compose up --build
 ```
 
-This will start three containers:
+This will start five containers:
 
 - **PostgreSQL** (port 5432) - Database
-- **Backend** (port 3001) - API service
+- **Redis** (port 6379) - Message queue and Pub/Sub
+- **Backend** (port 3001) - API service + SSE
+- **Worker** - Background job processor for LLM calls
 - **Frontend** (port 3000) - Web interface
 
 ### Step 3: Access the Application
@@ -124,8 +128,9 @@ Click the "New Order" button and fill out the form:
 After submission, the system will:
 
 1. Create or associate patient/provider
-2. Create order
-3. Asynchronously call LLM to generate care plan
+2. Create order and enqueue job to Redis
+3. Worker picks up job and calls LLM to generate care plan
+4. Real-time status updates via SSE
 
 ### 3. View Care Plan
 
@@ -220,13 +225,16 @@ This is a **minimal MVP**, does not include:
 
 - ❌ Data validation
 - ❌ Duplicate checking
-- ❌ Error handling
+- ❌ Comprehensive error handling
 - ❌ Test cases
-- ❌ WebSocket real-time updates
-- ❌ Queue system
-- ❌ Worker processes
 - ❌ User authentication
 - ❌ Permission management
+
+Implemented in v0.5:
+
+- ✅ Queue system (Redis + BullMQ)
+- ✅ Worker processes
+- ✅ Real-time updates (SSE + Redis Pub/Sub)
 
 ## Troubleshooting
 
@@ -246,8 +254,10 @@ Ensure PostgreSQL container health check passes before starting backend service 
 
 ```bash
 docker-compose logs backend
+docker-compose logs worker
 docker-compose logs frontend
 docker-compose logs postgres
+docker-compose logs redis
 ```
 
 ## License
