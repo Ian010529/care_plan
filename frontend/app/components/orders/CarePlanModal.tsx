@@ -46,7 +46,10 @@ export function CarePlanModal({
       }
     >
       <div className="mb-4">
-        <StatusBadge status={order.care_plan_status} className="px-3 py-1 text-sm" />
+        <StatusBadge
+          status={order.care_plan_status}
+          className="px-3 py-1 text-sm"
+        />
       </div>
 
       {order.care_plan_status === "completed" && order.care_plan_content && (

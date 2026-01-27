@@ -85,7 +85,10 @@ export function useOrderForm({ onSuccess }: UseOrderFormOptions = {}) {
     ];
 
     fields.forEach((field) => {
-      const error = validateField(field, formData[field as keyof OrderFormData]);
+      const error = validateField(
+        field,
+        formData[field as keyof OrderFormData],
+      );
       if (error) errors[field as keyof FormErrors] = error;
     });
 
@@ -123,7 +126,9 @@ export function useOrderForm({ onSuccess }: UseOrderFormOptions = {}) {
             setSubmitError(errorData);
           }
         } else {
-          setSubmitError({ error: errorData.error || "Failed to create order" });
+          setSubmitError({
+            error: errorData.error || "Failed to create order",
+          });
         }
         return false;
       } catch (error) {
