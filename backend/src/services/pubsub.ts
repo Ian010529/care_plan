@@ -18,7 +18,7 @@ subscriber.subscribe(CHANNEL, (err) => {
 });
 
 // 处理接收到的消息
-subscriber.on("message", async (channel, message) => {
+subscriber.on("message", async (channel: string, message: string | Buffer) => {
   if (channel !== CHANNEL) return;
 
   try {
@@ -42,6 +42,7 @@ subscriber.on("message", async (channel, message) => {
         p.first_name,
         p.last_name,
         p.mrn,
+        p.date_of_birth as patient_date_of_birth,
         pr.id as provider_id,
         pr.name as provider_name,
         pr.npi as provider_npi,

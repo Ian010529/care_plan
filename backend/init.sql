@@ -14,6 +14,7 @@ CREATE TABLE patients (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     mrn VARCHAR(6) NOT NULL UNIQUE,
+    date_of_birth DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -56,10 +57,10 @@ INSERT INTO providers (name, npi) VALUES
 ('Dr. Emily Rodriguez', '3456789012');
 
 -- Mock Patients
-INSERT INTO patients (first_name, last_name, mrn) VALUES
-('John', 'Smith', '000001'),
-('Mary', 'Williams', '000002'),
-('Robert', 'Brown', '000003');
+INSERT INTO patients (first_name, last_name, mrn, date_of_birth) VALUES
+('John', 'Smith', '000001', '1979-06-08'),
+('Mary', 'Williams', '000002', '1965-03-15'),
+('Robert', 'Brown', '000003', '1988-11-22');
 
 -- Mock Orders
 INSERT INTO orders (patient_id, provider_id, primary_diagnosis, medication_name, additional_diagnosis, medication_history, patient_records) VALUES

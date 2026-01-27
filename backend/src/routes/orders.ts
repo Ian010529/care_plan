@@ -1,6 +1,11 @@
 import express, { Request, Response } from "express";
 import pool from "../db";
 import { carePlanQueue } from "../queue";
+import {
+  detectOrderDuplicate,
+  detectPatientDuplicate,
+  detectProviderDuplicate,
+} from "../services/duplicateDetection";
 
 const router = express.Router();
 
@@ -31,6 +36,7 @@ router.get("/search", async (req: Request, res: Response) => {
         p.first_name,
         p.last_name,
         p.mrn,
+        p.date_of_birth as patient_date_of_birth,
         pr.id as provider_id,
         pr.name as provider_name,
         pr.npi as provider_npi,
@@ -80,6 +86,7 @@ router.get("/", async (req: Request, res: Response) => {
         p.first_name,
         p.last_name,
         p.mrn,
+        p.date_of_birth as patient_date_of_birth,
         pr.id as provider_id,
         pr.name as provider_name,
         pr.npi as provider_npi,
@@ -121,6 +128,7 @@ router.get("/:id", async (req: Request, res: Response) => {
         p.first_name,
         p.last_name,
         p.mrn,
+        p.date_of_birth as patient_date_of_birth,
         pr.id as provider_id,
         pr.name as provider_name,
         pr.npi as provider_npi,
@@ -199,6 +207,7 @@ router.post("/", async (req: Request, res: Response) => {
       firstName,
       lastName,
       mrn,
+      dateOfBirth,
       providerName,
       providerNpi,
       primaryDiagnosis,
@@ -206,40 +215,98 @@ router.post("/", async (req: Request, res: Response) => {
       additionalDiagnosis,
       medicationHistory,
       patientRecords,
+      confirm,
     } = req.body;
 
-    // Get or create patient
-    let patientResult = await client.query(
-      "SELECT id FROM patients WHERE mrn = $1",
-      [mrn],
-    );
-
-    let patientId;
-    if (patientResult.rows.length === 0) {
-      patientResult = await client.query(
-        "INSERT INTO patients (first_name, last_name, mrn) VALUES ($1, $2, $3) RETURNING id",
-        [firstName, lastName, mrn],
-      );
-      patientId = patientResult.rows[0].id;
-    } else {
-      patientId = patientResult.rows[0].id;
+    if (!dateOfBirth) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "dateOfBirth is required" });
     }
 
-    // Get or create provider
-    let providerResult = await client.query(
-      "SELECT id FROM providers WHERE npi = $1",
-      [providerNpi],
-    );
+    const warnings: string[] = [];
 
-    let providerId;
-    if (providerResult.rows.length === 0) {
-      providerResult = await client.query(
+    // Provider duplicate detection
+    const providerCheck = await detectProviderDuplicate({
+      name: providerName,
+      npi: providerNpi,
+    });
+
+    if (providerCheck.should_block) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error: "Provider duplicate check blocked the request",
+        duplicate_check: providerCheck,
+      });
+    }
+
+    // Patient duplicate detection
+    const patientCheck = await detectPatientDuplicate({
+      firstName,
+      lastName,
+      mrn,
+      dateOfBirth,
+    });
+
+    if (patientCheck.warnings.length > 0) {
+      warnings.push(...patientCheck.warnings);
+    }
+
+    // Resolve provider id (reuse when NPI+name match)
+    let providerId: number;
+    if (providerCheck.is_duplicate && providerCheck.existing_record) {
+      providerId = providerCheck.existing_record.id;
+    } else {
+      const providerResult = await client.query(
         "INSERT INTO providers (name, npi) VALUES ($1, $2) RETURNING id",
         [providerName, providerNpi],
       );
       providerId = providerResult.rows[0].id;
+    }
+
+    // Resolve patient id
+    let patientId: number;
+    const existingPatient = patientCheck.existing_record;
+    const mrnMatchesExisting = existingPatient?.mrn === mrn;
+
+    if (existingPatient && mrnMatchesExisting) {
+      patientId = existingPatient.id;
     } else {
-      providerId = providerResult.rows[0].id;
+      const patientResult = await client.query(
+        "INSERT INTO patients (first_name, last_name, mrn, date_of_birth) VALUES ($1, $2, $3, $4::date) RETURNING id",
+        [firstName, lastName, mrn, dateOfBirth],
+      );
+      patientId = patientResult.rows[0].id;
+    }
+
+    // Order duplicate detection
+    const orderCheck = await detectOrderDuplicate({
+      patientId,
+      medicationName,
+      createdAt: new Date(),
+      confirm: Boolean(confirm),
+    });
+
+    if (orderCheck.should_block) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error: "Order duplicate check blocked the request",
+        duplicate_check: orderCheck,
+      });
+    }
+
+    if (orderCheck.warnings.length > 0 && !confirm) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error:
+          "Order duplicate check requires confirmation. Retry with confirm=true to proceed.",
+        duplicate_check: orderCheck,
+        warnings,
+        needs_confirmation: true,
+      });
+    }
+
+    if (orderCheck.warnings.length > 0) {
+      warnings.push(...orderCheck.warnings);
     }
 
     // Create order
@@ -304,6 +371,7 @@ router.post("/", async (req: Request, res: Response) => {
         p.first_name,
         p.last_name,
         p.mrn,
+        p.date_of_birth as patient_date_of_birth,
         pr.id as provider_id,
         pr.name as provider_name,
         pr.npi as provider_npi,
@@ -322,7 +390,15 @@ router.post("/", async (req: Request, res: Response) => {
       [orderId],
     );
 
-    res.status(201).json(finalResult.rows[0]);
+    res.status(201).json({
+      ...finalResult.rows[0],
+      warnings,
+      duplicate_checks: {
+        provider: providerCheck,
+        patient: patientCheck,
+        order: orderCheck,
+      },
+    });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Error creating order:", error);
