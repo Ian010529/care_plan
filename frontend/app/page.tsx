@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useOrderEvents } from "./hooks/useOrderEvents";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -40,6 +41,44 @@ export default function Home() {
     patientRecords: "",
   });
 
+  // SSE 实时更新处理
+  const handleOrderUpdate = (updatedOrder: Order) => {
+    // 更新 orders 列表
+    setOrders((prevOrders) => {
+      const existingIndex = prevOrders.findIndex(
+        (order) => order.id === updatedOrder.id
+      );
+
+      if (existingIndex >= 0) {
+        // 更新现有 order
+        const newOrders = [...prevOrders];
+        newOrders[existingIndex] = updatedOrder;
+        return newOrders;
+      } else {
+        // 新增 order (添加到列表首部)
+        return [updatedOrder, ...prevOrders];
+      }
+    });
+
+    // 如果当前正在查看该 order，也更新 selectedOrder
+    setSelectedOrder((prevSelected) => {
+      if (prevSelected && prevSelected.id === updatedOrder.id) {
+        return updatedOrder;
+      }
+      return prevSelected;
+    });
+  };
+
+  // SSE 连接
+  useOrderEvents({
+    onOrderUpdate: handleOrderUpdate,
+    onReconnect: () => {
+      console.log("🔄 SSE reconnected, refreshing orders...");
+      fetchOrders();
+    },
+  });
+
+  // 初始加载 orders
   useEffect(() => {
     fetchOrders();
   }, []);
