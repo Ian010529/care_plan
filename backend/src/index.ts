@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import ordersRouter from "./routes/orders";
 import { sseManager } from "./services/sse";
 import "./services/pubsub"; // 导入以启动订阅
+import { exceptionHandler } from "./exceptions";
 
 dotenv.config();
 
@@ -47,6 +48,9 @@ app.get("/api/events", (req, res) => {
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
+
+// Error handler (must be after routes)
+app.use(exceptionHandler);
 
 // Start server
 app.listen(PORT, () => {

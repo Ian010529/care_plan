@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Order } from "../types/order";
+import { ApiResponse, Order } from "../types/order";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -12,8 +12,8 @@ export function useOrders() {
   const fetchOrders = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/api/orders`);
-      const data = await response.json();
-      setOrders(data);
+      const result: ApiResponse<Order[]> = await response.json();
+      setOrders(result.data || []);
       setSearchQuery("");
       setIsSearching(false);
     } catch (error) {
@@ -35,8 +35,8 @@ export function useOrders() {
         const response = await fetch(
           `${API_URL}/api/orders/search?q=${encodeURIComponent(query)}`,
         );
-        const data = await response.json();
-        setOrders(data);
+        const result: ApiResponse<Order[]> = await response.json();
+        setOrders(result.data || []);
       } catch (error) {
         console.error("Error searching orders:", error);
       } finally {
@@ -54,8 +54,8 @@ export function useOrders() {
   const handleViewCarePlan = useCallback(async (orderId: number) => {
     try {
       const response = await fetch(`${API_URL}/api/orders/${orderId}`);
-      const data = await response.json();
-      setSelectedOrder(data);
+      const result: ApiResponse<Order> = await response.json();
+      setSelectedOrder(result.data || null);
     } catch (error) {
       console.error("Error fetching order:", error);
     }
@@ -89,11 +89,11 @@ export function useOrders() {
           method: "DELETE",
         });
 
-        if (response.ok) {
+        const result: ApiResponse = await response.json();
+        if (response.ok && result.ok) {
           fetchOrders();
         } else {
-          const error = await response.json();
-          alert(`Failed to delete order: ${error.error || "Unknown error"}`);
+          alert(`Failed to delete order: ${result.message || "Unknown error"}`);
         }
       } catch (error) {
         console.error("Error deleting order:", error);

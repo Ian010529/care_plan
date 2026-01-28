@@ -6,18 +6,28 @@ import {
   detectPatientDuplicate,
   detectProviderDuplicate,
 } from "../services/duplicateDetection";
+import {
+  ApiCodes,
+  AppError,
+  ConfirmationRequiredError,
+  DuplicateBlockedError,
+  NotFoundError,
+  ValidationError,
+  sendSuccess,
+} from "../exceptions";
 
 const router = express.Router();
 
 // GET search orders with filters
-router.get("/search", async (req: Request, res: Response) => {
+router.get("/search", async (req: Request, res: Response, next) => {
   try {
     const { q } = req.query;
 
     if (!q || typeof q !== "string") {
-      return res
-        .status(400)
-        .json({ error: "Search query parameter 'q' is required" });
+      throw new ValidationError(
+        "Search query parameter 'q' is required",
+        { field: "q" },
+      );
     }
 
     const searchTerm = `%${q}%`;
@@ -63,15 +73,21 @@ router.get("/search", async (req: Request, res: Response) => {
       [searchTerm],
     );
 
-    res.json(result.rows);
+    return sendSuccess(res, 200, {
+      code: ApiCodes.ORDERS_FETCHED,
+      message: "Orders fetched",
+      data: result.rows,
+    });
   } catch (error) {
-    console.error("Error searching orders:", error);
-    res.status(500).json({ error: "Failed to search orders" });
+    if (!(error instanceof AppError)) {
+      console.error("Error searching orders:", error);
+    }
+    return next(error);
   }
 });
 
 // GET all orders with patient, provider, and care plan info
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", async (req: Request, res: Response, next) => {
   try {
     const result = await pool.query(`
       SELECT 
@@ -103,15 +119,21 @@ router.get("/", async (req: Request, res: Response) => {
       ORDER BY o.created_at DESC
     `);
 
-    res.json(result.rows);
+    return sendSuccess(res, 200, {
+      code: ApiCodes.ORDERS_FETCHED,
+      message: "Orders fetched",
+      data: result.rows,
+    });
   } catch (error) {
-    console.error("Error fetching orders:", error);
-    res.status(500).json({ error: "Failed to fetch orders" });
+    if (!(error instanceof AppError)) {
+      console.error("Error fetching orders:", error);
+    }
+    return next(error);
   }
 });
 
 // GET single order by ID
-router.get("/:id", async (req: Request, res: Response) => {
+router.get("/:id", async (req: Request, res: Response, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -148,18 +170,24 @@ router.get("/:id", async (req: Request, res: Response) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Order not found" });
+      throw new NotFoundError("Order not found", { id });
     }
 
-    res.json(result.rows[0]);
+    return sendSuccess(res, 200, {
+      code: ApiCodes.ORDER_FETCHED,
+      message: "Order fetched",
+      data: result.rows[0],
+    });
   } catch (error) {
-    console.error("Error fetching order:", error);
-    res.status(500).json({ error: "Failed to fetch order" });
+    if (!(error instanceof AppError)) {
+      console.error("Error fetching order:", error);
+    }
+    return next(error);
   }
 });
 
 // DELETE order by ID
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", async (req: Request, res: Response, next) => {
   const client = await pool.connect();
 
   try {
@@ -175,7 +203,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
     if (orderCheck.rows.length === 0) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Order not found" });
+      throw new NotFoundError("Order not found", { id });
     }
 
     // Delete care plan first (due to foreign key constraint)
@@ -186,18 +214,24 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
     await client.query("COMMIT");
 
-    res.json({ message: "Order deleted successfully", id: parseInt(id) });
+    return sendSuccess(res, 200, {
+      code: ApiCodes.ORDER_DELETED,
+      message: "Order deleted successfully",
+      data: { id: parseInt(id, 10) },
+    });
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error deleting order:", error);
-    res.status(500).json({ error: "Failed to delete order" });
+    if (!(error instanceof AppError)) {
+      console.error("Error deleting order:", error);
+    }
+    return next(error);
   } finally {
     client.release();
   }
 });
 
 // POST create new order
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response, next) => {
   const client = await pool.connect();
 
   try {
@@ -220,7 +254,9 @@ router.post("/", async (req: Request, res: Response) => {
 
     if (!dateOfBirth) {
       await client.query("ROLLBACK");
-      return res.status(400).json({ error: "dateOfBirth is required" });
+      throw new ValidationError("dateOfBirth is required", {
+        field: "dateOfBirth",
+      });
     }
 
     const warnings: string[] = [];
@@ -233,10 +269,10 @@ router.post("/", async (req: Request, res: Response) => {
 
     if (providerCheck.should_block) {
       await client.query("ROLLBACK");
-      return res.status(409).json({
-        error: "Provider duplicate check blocked the request",
-        duplicate_check: providerCheck,
-      });
+      throw new DuplicateBlockedError(
+        "Provider duplicate check blocked the request",
+        { duplicate_check: providerCheck },
+      );
     }
 
     // Patient duplicate detection
@@ -288,21 +324,20 @@ router.post("/", async (req: Request, res: Response) => {
 
     if (orderCheck.should_block) {
       await client.query("ROLLBACK");
-      return res.status(409).json({
-        error: "Order duplicate check blocked the request",
-        duplicate_check: orderCheck,
-      });
+      throw new DuplicateBlockedError(
+        "Order duplicate check blocked the request",
+        { duplicate_check: orderCheck },
+      );
     }
 
     if (orderCheck.warnings.length > 0 && !confirm) {
       await client.query("ROLLBACK");
-      return res.status(409).json({
-        error:
-          "Order duplicate check requires confirmation. Retry with confirm=true to proceed.",
-        duplicate_check: orderCheck,
-        warnings,
-        needs_confirmation: true,
-      });
+      const confirmationWarnings = [...warnings, ...orderCheck.warnings];
+      throw new ConfirmationRequiredError(
+        "Order duplicate check requires confirmation. Retry with confirm=true to proceed.",
+        { duplicate_check: orderCheck },
+        confirmationWarnings,
+      );
     }
 
     if (orderCheck.warnings.length > 0) {
@@ -390,19 +425,25 @@ router.post("/", async (req: Request, res: Response) => {
       [orderId],
     );
 
-    res.status(201).json({
-      ...finalResult.rows[0],
+    return sendSuccess(res, 201, {
+      code: ApiCodes.ORDER_CREATED,
+      message: "Order created",
+      data: finalResult.rows[0],
       warnings,
-      duplicate_checks: {
-        provider: providerCheck,
-        patient: patientCheck,
-        order: orderCheck,
+      details: {
+        duplicate_checks: {
+          provider: providerCheck,
+          patient: patientCheck,
+          order: orderCheck,
+        },
       },
     });
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error creating order:", error);
-    res.status(500).json({ error: "Failed to create order" });
+    if (!(error instanceof AppError)) {
+      console.error("Error creating order:", error);
+    }
+    return next(error);
   } finally {
     client.release();
   }

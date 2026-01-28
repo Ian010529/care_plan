@@ -3,7 +3,7 @@ import {
   Order,
   OrderFormData,
   FormErrors,
-  ApiErrorResponse,
+  ApiResponse,
   INITIAL_FORM_DATA,
 } from "../types/order";
 
@@ -55,7 +55,7 @@ interface UseOrderFormOptions {
 export function useOrderForm({ onSuccess }: UseOrderFormOptions = {}) {
   const [formData, setFormData] = useState<OrderFormData>(INITIAL_FORM_DATA);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [submitError, setSubmitError] = useState<ApiErrorResponse | null>(null);
+  const [submitError, setSubmitError] = useState<ApiResponse | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingPayload, setPendingPayload] = useState<object | null>(null);
@@ -108,32 +108,34 @@ export function useOrderForm({ onSuccess }: UseOrderFormOptions = {}) {
           body: JSON.stringify({ ...payload, confirm }),
         });
 
-        if (response.ok) {
+        const result: ApiResponse<Order> = await response.json();
+
+        if (response.ok && result.ok) {
           setFormData(INITIAL_FORM_DATA);
           setFormErrors({});
           onSuccess?.();
           return true;
         }
 
-        const errorData: ApiErrorResponse = await response.json();
-
         if (response.status === 409) {
-          if (errorData.needs_confirmation) {
+          if (result.needs_confirmation) {
             setPendingPayload(payload);
             setShowConfirmDialog(true);
-            setSubmitError(errorData);
+            setSubmitError(result);
           } else {
-            setSubmitError(errorData);
+            setSubmitError(result);
           }
         } else {
-          setSubmitError({
-            error: errorData.error || "Failed to create order",
-          });
+          setSubmitError(result);
         }
         return false;
       } catch (error) {
         console.error("Error creating order:", error);
-        setSubmitError({ error: "Network error. Please try again." });
+        setSubmitError({
+          ok: false,
+          code: "NETWORK_ERROR",
+          message: "Network error. Please try again.",
+        });
         return false;
       } finally {
         setIsSubmitting(false);

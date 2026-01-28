@@ -1,11 +1,11 @@
 import { FormInput, FormTextarea, Button } from "../ui";
-import { OrderFormData, FormErrors, ApiErrorResponse } from "../../types/order";
+import { OrderFormData, FormErrors, ApiResponse } from "../../types/order";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 interface OrderFormProps {
   formData: OrderFormData;
   formErrors: FormErrors;
-  submitError: ApiErrorResponse | null;
+  submitError: ApiResponse | null;
   isSubmitting: boolean;
   showConfirmDialog: boolean;
   onFieldChange: (name: string, value: string) => void;
@@ -44,9 +44,9 @@ export function OrderForm({
         {submitError && !showConfirmDialog && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <h4 className="text-red-800 font-medium mb-2">
-              ❌ {submitError.error}
+              ❌ {submitError.message}
             </h4>
-            {submitError.duplicate_check?.warnings?.map((warning, idx) => (
+            {submitError.details?.duplicate_check?.warnings?.map((warning, idx) => (
               <p key={idx} className="text-sm text-red-700 mb-1">
                 {warning}
               </p>
@@ -195,3 +195,4 @@ export function OrderForm({
     </>
   );
 }
+

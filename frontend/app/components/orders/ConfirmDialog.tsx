@@ -1,9 +1,9 @@
 import { Button } from "../ui";
-import { ApiErrorResponse } from "../../types/order";
+import { ApiResponse } from "../../types/order";
 
 interface ConfirmDialogProps {
   isOpen: boolean;
-  submitError: ApiErrorResponse | null;
+  submitError: ApiResponse | null;
   isSubmitting: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -28,7 +28,9 @@ export function ConfirmDialog({
           <p className="text-gray-700 mb-2">
             A similar order already exists. Do you want to continue?
           </p>
-          {submitError?.duplicate_check?.warnings?.map((warning, idx) => (
+          {(submitError?.details?.duplicate_check?.warnings ||
+            submitError?.warnings ||
+            []).map((warning, idx) => (
             <p
               key={idx}
               className="text-sm text-yellow-700 bg-yellow-50 p-2 rounded mb-2"
