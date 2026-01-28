@@ -172,6 +172,7 @@ export async function detectOrderDuplicate(params: {
     confirm = false,
   } = params;
 
+  const normalizedMedication = normalizeMedication(medicationName);
   const dateOnly = toDateOnly(createdAt);
 
   const sameDay = await pool.query<OrderRow>(
@@ -193,7 +194,7 @@ export async function detectOrderDuplicate(params: {
       ORDER BY o.created_at DESC
       LIMIT 1
     `,
-    [patientId, medicationName, dateOnly],
+    [patientId, normalizedMedication, dateOnly],
   );
 
   if (sameDay.rows.length > 0) {
@@ -224,7 +225,7 @@ export async function detectOrderDuplicate(params: {
       ORDER BY o.created_at DESC
       LIMIT 1
     `,
-    [patientId, medicationName, dateOnly],
+    [patientId, normalizedMedication, dateOnly],
   );
 
   if (otherDay.rows.length > 0) {
