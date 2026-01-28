@@ -1,4 +1,4 @@
-# Care Plan Generator - MVP v0.5
+# Care Plan Generator - MVP v0.6
 
 A minimal viable product for automatically generating care plans based on patient information using LLM (GPT-4).
 
@@ -223,18 +223,17 @@ Requires local PostgreSQL installation and manual execution of `init.sql` script
 
 This is a **minimal MVP**, does not include:
 
-- ❌ Data validation
-- ❌ Duplicate checking
-- ❌ Comprehensive error handling
-- ❌ Test cases
 - ❌ User authentication
 - ❌ Permission management
 
-Implemented in v0.5:
+Implemented in v0.6:
 
 - ✅ Queue system (Redis + BullMQ)
 - ✅ Worker processes
 - ✅ Real-time updates (SSE + Redis Pub/Sub)
+- ✅ Duplicate checking (Patient, Provider, Order)
+- ✅ Exception handling framework
+- ✅ Test cases (Jest)
 
 ## Troubleshooting
 
